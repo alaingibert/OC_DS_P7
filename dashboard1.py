@@ -6,7 +6,7 @@ Created on Sat Dec 19 17:21:59 2020
 """
 
 # from pathlib import Path
-# import pandas as pd
+import pandas as pd
 import streamlit as st
 import pickle
 import kernel_1 as kn1
@@ -23,7 +23,8 @@ left_column, right_column = st.beta_columns(2)
 
 # layout pour seaborn
 # sns.set_context("notebook")
-sns.set_style("darkgrid") 
+sns.set_style("darkgrid")
+shap.initjs()
 
 @st.cache(suppress_st_warning=True)
 def init_script(first):
@@ -32,7 +33,10 @@ def init_script(first):
     first = True permet d'initialiser une seule fois les variables, puis utiliser le cache ensuite
     """
     # récupère le DF processed (utilisé pour le predict_proba)    
-    processed_df = kn1.get_df(debug=True, reload=True, process=True, num_rows=1000)
+    # processed_df = kn1.get_df(debug=True, reload=True, process=True, num_rows=1000)
+    processed_df = kn1.get_df(debug = True, reload = True, process = True, num_rows=2000)
+    # training data
+    processed_df = processed_df[processed_df['TARGET'].notnull()]    
     
     # récupère le DF brut (utilisé pour l'affichage')
     raw_df = kn1.get_df(debug=True, reload=False, process=False)
@@ -43,24 +47,27 @@ def init_script(first):
     # dictionnaire des MIN et MAX pour chaque variable éditable
     # recharge les dictionnaires
     min_var, max_var = {}, {}
-    with open("min_max_var", "rb") as input_file:
+    with open("min_max_feats", "rb") as input_file:
         min_var = pickle.load(input_file)
         max_var = pickle.load(input_file)
+        feats = pickle.load(input_file)
     
     # charge le modèle entraîné
     with open("lightGBM_trained_model", "rb") as input_file:
         lightGBM_clf = pickle.load(input_file)    
-    # features
-    feats = [f for f in processed_df.columns if f not in ['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index']]
-    #
+
+    with open("shap_objects", "rb") as input_file:
+        shap_explainer = pickle.load(input_file)
+        shap_values = pickle.load(input_file)
+        
     print('first init')
-    return processed_df, raw_df, feats, lightGBM_clf, min_var, max_var
+    return processed_df, raw_df, feats, lightGBM_clf, min_var, max_var, shap_explainer, shap_values
 
 # initialise les objets du script au premier démarrage, utilise le cache ensuite
-processed_df, raw_df, feats, model_clf, min_var, max_var = init_script(first=True)
+processed_df, raw_df, feats, model_clf, min_var, max_var, shap_explainer, shap_values = init_script(first=True)
 
 # seuil du modèle pour 'TARGET'
-model_threshold = 0.3
+model_threshold = 0.16
   
 
 #(allow_output_mutation=True)
@@ -83,26 +90,6 @@ def get_customer_from_df(sk_id_curr):
     # extrait le DF brut (1 ligne) correspondant au client
     raw_customer_df = raw_df[ raw_df.SK_ID_CURR == sk_id_curr].copy()
     return processed_customer_df, raw_customer_df
-
-
-#@st.cache(suppress_st_warning=True)
-
-# def display_and_update_customer(customer_df): #current_customer):
-    
-#     # initialise et affiche les sliders correspondant aux variables
-#     user_var = {}
-#     for var_name in top_variable_name:     
-#         val = float(customer_df[var_name].values[0])
-#         user_var[var_name] = left_column.slider(label=var_name,
-#                           min_value = min((min_var[var_name], val)), #current_customer[var_name])),
-#                           max_value = max_var[var_name],
-#                           value=val, step=None, format=None, key=var_name)
-#     # affiche la target
-#     target = customer_df['TARGET'].values[0]
-#     st.write("TARGET : {}".format(target))
-    
-#     print('display_and_update_customer --- : \n')
-#     return user_var
 
 
 
@@ -156,6 +143,10 @@ def display_graph(var_name, var_label, cust_value, df, graph_type):
     st.pyplot(fig)                
     return
 
+def st_shap(plot, height=None):
+    shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
+    components.html(shap_html, height=height)
+    
 def display_customer_info(raw_customer_df, var_group_name):
     """
     Affiche les infos client dans la colonne de gauche
@@ -169,6 +160,10 @@ def display_customer_info(raw_customer_df, var_group_name):
     with left_column:
         # affiche le nom de la section choisie
         st.header( dsh.var_group[var_group_name].upper() )
+        
+        # affiche importance features    
+        #FONCTIONNE PAS
+        # st.pyplot(shap.summary_plot(shap_values, processed_df[feats]))
         
         # affiche chaque variable de la section choisie
         for var_name, var_label in my_dict.items():
@@ -239,14 +234,20 @@ st.sidebar.header("DASHBOARD\n'Prêt à Dépenser'")
 sk_id_curr = st.sidebar.text_input("Enter customer ID")
 processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
 print('sk_id_curr : ', sk_id_curr)
+# print(processed_df[feats])
+
+# affiche importance features 
+fig_1, ax_1 = plt.subplots(1,1, figsize=(5,20))
+ax_1 = shap.summary_plot(shap_values, processed_df[feats])
+st.sidebar.pyplot(fig_1)
+# st_shap(shap.summary_plot(shap_values, processed_df[feats]), 400)
 
 # bouton 'RELOAD' / TOTEST
 if st.sidebar.button(label='reload', key='reload'):
     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
 
-# BOUTON RADIO : choix du type d'info à afficher
-# selected_info_type = st.sidebar.radio('Info type', list(dsh.var_group))
-# print('selected_info_type : ', selected_info_type)
+
+
 
 # CHECKBOXES : choix du type d'info à afficher
 for var_group_name, var_group_label in dsh.var_group.items():
@@ -281,4 +282,5 @@ if st.sidebar.button('Predict'):
         grant_str += 'not favorable'
         
     st.sidebar.write(pred_str)
-    st.sidebar.write(grant_str) 
+    st.sidebar.write(grant_str)
+

@@ -377,7 +377,9 @@ def get_df(debug = False, reload = False, process = False, num_rows = None): #ma
             print("Credit card balance df shape:", cc.shape)
             df = df.join(cc, how='left', on='SK_ID_CURR')
             del cc
-            gc.collect()
+            gc.collect()        
+        # ligne ajoutée à cause du msg : LightGBMError: Do not support special JSON characters in feature name.
+        df = df.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
         # sauvegarde sur disque
         df.to_csv(processed_df_filename, index= False)
 
