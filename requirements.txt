@@ -1,7 +1,8 @@
+seaborn==0.11.0
+shap==0.38.1
+pandas==1.1.5
+streamlit==0.73.0
 lightgbm==3.1.1
 numpy==1.19.3
-seaborn==0.11.0
-pandas==1.1.5
 matplotlib==3.3.3
-streamlit==0.73.0
-scikit_learn==0.24.0
+scikit_learn==0.24.1
