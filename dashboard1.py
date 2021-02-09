@@ -8,6 +8,7 @@ Created on Sat Dec 19 17:21:59 2020
 # from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import pickle
 import kernel_1 as kn1
 import dashboard1_var as dsh
@@ -32,17 +33,15 @@ def init_script(first):
     Initialise les variables et instances d'objets utilisés dans tout le script
     first = True permet d'initialiser une seule fois les variables, puis utiliser le cache ensuite
     """
+    num_rows = 2000
     # récupère le DF processed (utilisé pour le predict_proba)    
     # processed_df = kn1.get_df(debug=True, reload=True, process=True, num_rows=1000)
-    processed_df = kn1.get_df(debug = True, reload = True, process = True, num_rows=2000)
+    processed_df = kn1.get_df(debug = True, reload = True, process = True, num_rows=num_rows)
     # training data
     processed_df = processed_df[processed_df['TARGET'].notnull()]    
     
     # récupère le DF brut (utilisé pour l'affichage')
-    raw_df = kn1.get_df(debug=True, reload=False, process=False)
-    
-    # Création colonne 'Accord crédit'
-    # raw_df[dsh.CREDIT_GRANT] = raw_df['TARGET'].apply(lambda x: 'favorable' if x == 0 else 'not favorable')        
+    display_df = pd.read_csv('display_df.csv', nrows= num_rows)            
         
     # dictionnaire des MIN et MAX pour chaque variable éditable
     # recharge les dictionnaires
@@ -61,10 +60,10 @@ def init_script(first):
         shap_values = pickle.load(input_file)
         
     print('first init')
-    return processed_df, raw_df, feats, lightGBM_clf, min_var, max_var, shap_explainer, shap_values
+    return processed_df, display_df, feats, lightGBM_clf, min_var, max_var, shap_explainer, shap_values
 
 # initialise les objets du script au premier démarrage, utilise le cache ensuite
-processed_df, raw_df, feats, model_clf, min_var, max_var, shap_explainer, shap_values = init_script(first=True)
+processed_df, display_df, feats, model_clf, min_var, max_var, shap_explainer, shap_values = init_script(first=True)
 
 # seuil du modèle pour 'TARGET'
 model_threshold = 0.16
@@ -88,7 +87,7 @@ def get_customer_from_df(sk_id_curr):
     # extrait le DF processed (1 ligne) correspondant au client
     processed_customer_df = processed_df[ processed_df.SK_ID_CURR == sk_id_curr].copy()
     # extrait le DF brut (1 ligne) correspondant au client
-    raw_customer_df = raw_df[ raw_df.SK_ID_CURR == sk_id_curr].copy()
+    raw_customer_df = display_df[ display_df.SK_ID_CURR == sk_id_curr].copy()
     return processed_customer_df, raw_customer_df
 
 
@@ -155,9 +154,26 @@ def display_customer_info(raw_customer_df, var_group_name):
     # récupère le dict
     my_dict = dsh.cust_var[ var_group_name ]        
     # variables saisie par l'utilisateur dans les input
-    user_var = {}
+    user_var = {}    
+    
     
     with left_column:
+        # affiche l'interprétation SHAP
+        client_idx = raw_customer_df.index[0]
+        print('client_idx', client_idx)
+        
+        fig_1, ax_1 = plt.subplots(1,1, figsize=(10,5))
+        # ax_1=shap.force_plot(shap_explainer.expected_value[1], shap_values[1][client_idx,:],
+        #                 processed_df[feats].iloc[0,:]) # matplotlib=True, figsize=(12,3)
+        
+        # st.write( shap.force_plot(shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:] ),
+        #          unsafe_allow_html=True )
+
+        st_shap( shap.force_plot( shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:],
+                        link='logit', figsize=(12,3) ) ) #matplotlib=True
+        # st.pyplot(fig_1) #bbox_inches='tight',dpi=300,pad_inches=0)
+        # plt.clf()                
+        
         # affiche le nom de la section choisie
         st.header( dsh.var_group[var_group_name].upper() )
         
@@ -178,7 +194,7 @@ def display_customer_info(raw_customer_df, var_group_name):
             
             # formatage de la valeur en fonction du type DAYS, MONEY, UNIT            
             if var_name in dsh.type_var[dsh.DAYS]:
-                cust_value_fmt = "{:.2f} years".format( float(cust_value)*(-1)/365 )
+                cust_value_fmt = "{:.2f} years".format( float(cust_value) ) #*(-1)/365
                 var_type = dsh.DAYS
             elif var_name in dsh.type_var[dsh.MONEY]:
                 cust_value_fmt = "{:.0f} $".format( float(cust_value) )
@@ -213,41 +229,42 @@ def display_customer_info(raw_customer_df, var_group_name):
                 if var_name in dsh.graphable_var:
                     # select slider                    
                     #range_options = ['min', '-10', '-5', '-2', '2', '5', '10', 'max']
-                    start_range, end_range = st.select_slider('Select a range of comparison',
-                                                          options=dsh.range_options[var_type],
-                                                          value=('min', 'max'), key=var_name)  
+                    # start_range, end_range = st.select_slider('Select a range of comparison',
+                    #                                       options=dsh.range_options[var_type],
+                    #                                       value=('min', 'max'), key=var_name)  
                     # CHECKBOX affichage histogram
                     if st.checkbox(label='histogram', value=False, key='histo'+var_name):
                         with right_column:                        
-                            display_graph(var_name, var_label, cust_value, raw_df, 'HISTO')    
+                            display_graph(var_name, var_label, cust_value, display_df, 'HISTO')    
                     # CHECKBOX affichage boxplot
                     if st.checkbox(label='boxplot', value=False, key='boxplot'+var_name):
                         with right_column:  
-                            display_graph(var_name, var_label, cust_value, raw_df, 'BOXPLOT')                                                               
+                            display_graph(var_name, var_label, cust_value, display_df, 'BOXPLOT')                                                               
     #
     return user_var
 
 
 # BARRE LATERALE
 st.sidebar.header("DASHBOARD\n'Prêt à Dépenser'")
-# input box "identifiant client"
-sk_id_curr = st.sidebar.text_input("Enter customer ID")
-processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-print('sk_id_curr : ', sk_id_curr)
+
+# select box "identifiant client"
+#sk_id_curr = st.sidebar.text_input("Enter customer ID")
+sk_id_curr = st.sidebar.selectbox(label='Client ID', options=display_df['SK_ID_CURR'], index=0, key='client_id')
+if sk_id_curr is not None:
+    print('sk_id_curr : ', sk_id_curr)
+    processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
+    user_var = display_customer_info(raw_customer_df, var_group_name='PERSONAL')
 # print(processed_df[feats])
 
 # affiche importance features 
 fig_1, ax_1 = plt.subplots(1,1, figsize=(5,20))
 ax_1 = shap.summary_plot(shap_values, processed_df[feats])
 st.sidebar.pyplot(fig_1)
-# st_shap(shap.summary_plot(shap_values, processed_df[feats]), 400)
+
 
 # bouton 'RELOAD' / TOTEST
 if st.sidebar.button(label='reload', key='reload'):
     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-
-
-
 
 # CHECKBOXES : choix du type d'info à afficher
 for var_group_name, var_group_label in dsh.var_group.items():
