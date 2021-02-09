@@ -55,9 +55,12 @@ def init_script(first):
     with open("lightGBM_trained_model", "rb") as input_file:
         lightGBM_clf = pickle.load(input_file)    
 
-    with open("shap_objects", "rb") as input_file:
-        shap_explainer = pickle.load(input_file)
-        shap_values = pickle.load(input_file)
+    # with open("shap_objects", "rb") as input_file:
+    #     shap_explainer = pickle.load(input_file)
+    #     shap_values = pickle.load(input_file)
+        
+    shap_explainer = shap.TreeExplainer(lightGBM_clf)
+    shap_values = shap_explainer.shap_values(processed_df[feats])
         
     print('first init')
     return processed_df, display_df, feats, lightGBM_clf, min_var, max_var, shap_explainer, shap_values
