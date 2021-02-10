@@ -20,7 +20,8 @@ import shap
 
 
 st.set_page_config(page_title='PRÊT à DÉPENSER', layout='wide')
-left_column, right_column = st.beta_columns(2)
+
+# left_column, right_column = st.beta_columns(2)
 
 # layout pour seaborn
 # sns.set_context("notebook")
@@ -91,6 +92,7 @@ def get_customer_from_df(sk_id_curr):
     processed_customer_df = processed_df[ processed_df.SK_ID_CURR == sk_id_curr].copy()
     # extrait le DF brut (1 ligne) correspondant au client
     raw_customer_df = display_df[ display_df.SK_ID_CURR == sk_id_curr].copy()
+
     return processed_customer_df, raw_customer_df
 
 
@@ -148,8 +150,22 @@ def display_graph(var_name, var_label, cust_value, df, graph_type):
 def st_shap(plot, height=None):
     shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
     components.html(shap_html, height=height)
+
+
+def display_customer_header(raw_customer_df):
+    # affiche ID Client
+    client_idx = raw_customer_df.index[0]
+    print('client_idx', client_idx)
+    client_id_str = "Client ID : {}".format(str(raw_customer_df['SK_ID_CURR'].iloc[0]))
+    st.write(client_id_str)    
+
+    # affiche l'interprétation SHAP    
+    fig_1, ax_1 = plt.subplots(1,1, figsize=(10,5))    
+    st_shap( shap.force_plot( shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:],
+                    link='logit', figsize=(12,3) ) ) #matplotlib=True                      
+    return
     
-def display_customer_info(raw_customer_df, var_group_name):
+def display_var_section(raw_customer_df, var_group_name):
     """
     Affiche les infos client dans la colonne de gauche
     Retourne les variables saisie par l'utilisateur
@@ -159,135 +175,80 @@ def display_customer_info(raw_customer_df, var_group_name):
     # variables saisie par l'utilisateur dans les input
     user_var = {}    
     
+    # affiche le nom de la section choisie
+    st.header( dsh.var_group[var_group_name].upper() )
     
-    with left_column:
-        # affiche l'interprétation SHAP
-        client_idx = raw_customer_df.index[0]
-        print('client_idx', client_idx)
+    
+    # affiche chaque variable de la section choisie
+    for var_name, var_label in my_dict.items():
+        cust_value = raw_customer_df[var_name].values[0]
+        # formatage de la valeur en fonction du type 
+        # if type(cust_value) == np.float64:
+        #     cust_value_fmt = "%.2f" % cust_value
+        # elif type(cust_value) == np.int64:
+        # cust_value_fmt = "%.0f" % cust_value
+        # else:
+        #     cust_value_fmt = str(cust_value)
         
-        fig_1, ax_1 = plt.subplots(1,1, figsize=(10,5))
-        # ax_1=shap.force_plot(shap_explainer.expected_value[1], shap_values[1][client_idx,:],
-        #                 processed_df[feats].iloc[0,:]) # matplotlib=True, figsize=(12,3)
+        # formatage de la valeur en fonction du type DAYS, MONEY, UNIT            
+        if var_name in dsh.type_var[dsh.DAYS]:
+            cust_value_fmt = "{:.2f} years".format( float(cust_value) ) #*(-1)/365
+            var_type = dsh.DAYS
+        elif var_name in dsh.type_var[dsh.MONEY]:
+            cust_value_fmt = "{:.0f} $".format( float(cust_value) )
+            var_type = dsh.MONEY
+        elif var_name in dsh.type_var[dsh.UNIT]:
+            cust_value_fmt = "{:.2f}".format( float(cust_value) )
+            var_type = dsh.UNIT
+        else:
+            cust_value_fmt = str(cust_value)                
         
-        # st.write( shap.force_plot(shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:] ),
-        #          unsafe_allow_html=True )
-
-        st_shap( shap.force_plot( shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:],
-                        link='logit', figsize=(12,3) ) ) #matplotlib=True
-        # st.pyplot(fig_1) #bbox_inches='tight',dpi=300,pad_inches=0)
-        # plt.clf()                
+        # chaîne à afficher : label de la variable et valeur de la variable
+        str_2_write = var_label+' : '+cust_value_fmt
         
-        # affiche le nom de la section choisie
-        st.header( dsh.var_group[var_group_name].upper() )
-        
-        # affiche importance features    
-        #FONCTIONNE PAS
-        # st.pyplot(shap.summary_plot(shap_values, processed_df[feats]))
-        
-        # affiche chaque variable de la section choisie
-        for var_name, var_label in my_dict.items():
-            cust_value = raw_customer_df[var_name].values[0]
-            # formatage de la valeur en fonction du type 
-            # if type(cust_value) == np.float64:
-            #     cust_value_fmt = "%.2f" % cust_value
-            # elif type(cust_value) == np.int64:
-            # cust_value_fmt = "%.0f" % cust_value
-            # else:
-            #     cust_value_fmt = str(cust_value)
+        # si la variable n'est ni éditable ni graphable, l'affiche en dur
+        if ( (var_name not in dsh.editable_var) & (var_name not in dsh.graphable_var) ):
+            st.write(str_2_write)
+            # passe à la variable suivante
+            continue
             
-            # formatage de la valeur en fonction du type DAYS, MONEY, UNIT            
-            if var_name in dsh.type_var[dsh.DAYS]:
-                cust_value_fmt = "{:.2f} years".format( float(cust_value) ) #*(-1)/365
-                var_type = dsh.DAYS
-            elif var_name in dsh.type_var[dsh.MONEY]:
-                cust_value_fmt = "{:.0f} $".format( float(cust_value) )
-                var_type = dsh.MONEY
-            elif var_name in dsh.type_var[dsh.UNIT]:
-                cust_value_fmt = "{:.2f}".format( float(cust_value) )
-                var_type = dsh.UNIT
-            else:
-                cust_value_fmt = str(cust_value)                
+        # sinon l'affiche dans un expander_label
+        expander_label = str_2_write
+        
+        with st.beta_expander(expander_label, expanded=False):
+            # si la variable est éditable, affiche un text_input
+            if var_name in dsh.editable_var:
+                min_val = float(0)
+                max_val = float(max_var[var_name])
+                input_label = "Enter new value for prediction [ min : {:.2f} - max : {:.2f} ]".format(min_val, max_val) #min_var[var_name], max_var[var_name]
+                user_var[var_name] = st.number_input(label=input_label, value=float(cust_value), 
+                                                     format='%.2f', min_value = min_val, # min_var[var_name]
+                                                     max_value = max_val, key=var_name) # max_var[var_name]
             
-            # chaîne à afficher : label de la variable et valeur de la variable
-            str_2_write = var_label+' : '+cust_value_fmt
-            
-            # si la variable n'est ni éditable ni graphable, l'affiche en dur
-            if ( (var_name not in dsh.editable_var) & (var_name not in dsh.graphable_var) ):
-                st.write(str_2_write)
-                # passe à la variable suivante
-                continue
-                
-            # sinon l'affiche dans un expander_label
-            expander_label = str_2_write
-            
-            with st.beta_expander(expander_label, expanded=False):
-                # si la variable est éditable, affiche un text_input
-                if var_name in dsh.editable_var:
-                    input_label = "Enter new value for prediction [ min : {:.2f} - max : {:.2f} ]".format(min_var[var_name], max_var[var_name])
-                    user_var[var_name] = st.number_input(label=input_label, value=float(cust_value), 
-                                                         format='%.2f', min_value = min_var[var_name],
-                                                         max_value = max_var[var_name], key=var_name) # TOTEST 
-                
-                # si la variable est graphable, affiche les checkboxes de graphe                
-                if var_name in dsh.graphable_var:
-                    # select slider                    
-                    #range_options = ['min', '-10', '-5', '-2', '2', '5', '10', 'max']
-                    # start_range, end_range = st.select_slider('Select a range of comparison',
-                    #                                       options=dsh.range_options[var_type],
-                    #                                       value=('min', 'max'), key=var_name)  
-                    # CHECKBOX affichage histogram
-                    if st.checkbox(label='histogram', value=False, key='histo'+var_name):
-                        with right_column:                        
-                            display_graph(var_name, var_label, cust_value, display_df, 'HISTO')    
-                    # CHECKBOX affichage boxplot
-                    if st.checkbox(label='boxplot', value=False, key='boxplot'+var_name):
-                        with right_column:  
-                            display_graph(var_name, var_label, cust_value, display_df, 'BOXPLOT')                                                               
+            # si la variable est graphable, affiche les checkboxes de graphe                
+            if var_name in dsh.graphable_var:
+                # select slider                    
+                #range_options = ['min', '-10', '-5', '-2', '2', '5', '10', 'max']
+                # start_range, end_range = st.select_slider('Select a range of comparison',
+                #                                       options=dsh.range_options[var_type],
+                #                                       value=('min', 'max'), key=var_name)  
+                # CHECKBOX affichage histogram
+                if st.checkbox(label='histogram', value=False, key='histo'+var_name):
+                    # with right_column:                        
+                    display_graph(var_name, var_label, cust_value, display_df, 'HISTO')    
+                # CHECKBOX affichage boxplot
+                if st.checkbox(label='boxplot', value=False, key='boxplot'+var_name):
+                    # with right_column:  
+                    display_graph(var_name, var_label, cust_value, display_df, 'BOXPLOT')                                                               
     #
     return user_var
 
 
-# BARRE LATERALE
-st.sidebar.header("DASHBOARD\n'Prêt à Dépenser'")
-
-# select box "identifiant client"
-#sk_id_curr = st.sidebar.text_input("Enter customer ID")
-sk_id_curr = st.sidebar.selectbox(label='Client ID', options=display_df['SK_ID_CURR'], index=0, key='client_id')
-if sk_id_curr is not None:
-    print('sk_id_curr : ', sk_id_curr)
-    processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-    user_var = display_customer_info(raw_customer_df, var_group_name='PERSONAL')
-# print(processed_df[feats])
-
-# affiche importance features 
-fig_1, ax_1 = plt.subplots(1,1, figsize=(5,20))
-ax_1 = shap.summary_plot(shap_values, processed_df[feats])
-st.sidebar.pyplot(fig_1)
-
-
-# bouton 'RELOAD' / TOTEST
-if st.sidebar.button(label='reload', key='reload'):
-    processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-
-# CHECKBOXES : choix du type d'info à afficher
-for var_group_name, var_group_label in dsh.var_group.items():
-    if st.sidebar.checkbox(label=var_group_label, value=False, key=var_group_name):
-        user_var = display_customer_info(raw_customer_df, var_group_name)
-        print('user_var : ', user_var)
-           
-# bouton 'predict'
-if st.sidebar.button('Predict'):
-    try:
-        # met à jour 'processed_customer_df' avec les nouvelles variables, puis fait une prédiction
-        for var_name in user_var.keys(): #dsh.editable_var:
-            processed_customer_df[var_name] = user_var[var_name]
-            print(var_name, ' : ', user_var[var_name])
-    except NameError: #  'user_var' pas encore défini
-        print('user_var pas encore défini')
-        pass
+def display_predict_proba(processed_customer_df): #, user_var):    
        
-    # prédiction par le modèle
-    pred = model_clf.predict_proba(processed_customer_df[feats], num_iteration=model_clf.best_iteration_)[0][1]
+    # prédiction par le modèle    
+    pred = model_clf.predict_proba(processed_customer_df[feats])[0][1] #, num_iteration=model_clf.best_iteration_
+    print('processed_customer_df[var_name] : ',processed_customer_df[dsh.editable_var])
     print('Predict : ', pred)
     
     # affichage
@@ -302,5 +263,56 @@ if st.sidebar.button('Predict'):
         grant_str += 'not favorable'
         
     st.sidebar.write(pred_str)
-    st.sidebar.write(grant_str)
+    st.sidebar.write(grant_str)    
+    return
+
+
+
+# BARRE LATERALE
+st.sidebar.image(image='dashboard-img.png')
+#st.sidebar.header("DASHBOARD\n'Prêt à Dépenser'")
+
+# select box "identifiant client"
+sk_id_curr = st.sidebar.selectbox(label='Client ID', options=display_df['SK_ID_CURR'], index=0, key='client_id')
+if sk_id_curr is not None: # 
+    print('sk_id_curr : ', sk_id_curr)
+    processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
+    display_customer_header(raw_customer_df)
+    display_var_section(raw_customer_df, var_group_name='PERSONAL') #user_var = 
+
+# PREDICTION de PROBA CLIENT
+if st.sidebar.button('Predict') or (processed_customer_df is not None):
+    display_predict_proba(processed_customer_df) #, user_var)
+
+# affiche importance features 
+fig_1, ax_1 = plt.subplots(1,1, figsize=(5,20))
+shap.summary_plot(shap_values, processed_df[feats])
+st.sidebar.pyplot(fig_1)
+
+
+# bouton 'RELOAD' / TOTEST
+# if st.sidebar.button(label='reload', key='reload'):
+#     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
+
+# CHECKBOXES : choix de la section à afficher ()
+for var_group_name, var_group_label in dsh.var_group.items():
+    if var_group_name != 'PERSONAL':
+        if st.sidebar.checkbox(label=var_group_label, value=False, key=var_group_name):
+            user_var = display_var_section(raw_customer_df, var_group_name)
+            print('user_var : ', user_var)
+            
+            # met à jour 'processed_customer_df' avec les nouvelles variables
+            print('\nmet à jour processed_customer_df avec les nouvelles variables')
+            print('user_var.keys() : ', user_var.keys())
+            for var_name in user_var.keys(): #dsh.editable_var:
+                # try:
+                processed_customer_df[var_name] = user_var[var_name]
+                print(var_name, ' : ', user_var[var_name])
+                # except NameError: #  'user_var' pas encore défini
+                #     print('user_var pas encore défini')
+                #     continue
+        
+        #pass            
+
+
 
