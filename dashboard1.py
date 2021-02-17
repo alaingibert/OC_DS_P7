@@ -21,10 +21,7 @@ import shap
 
 st.set_page_config(page_title='PRÊT à DÉPENSER', layout='wide')
 
-# left_column, right_column = st.beta_columns(2)
-
 # layout pour seaborn
-# sns.set_context("notebook")
 sns.set_style("darkgrid")
 shap.initjs()
 
@@ -37,8 +34,10 @@ def init_script(first):
     num_rows = 2000
     # récupère le DF processed (utilisé pour le predict_proba)    
     # processed_df = kn1.get_df(debug=True, reload=True, process=True, num_rows=1000)
-    processed_df = kn1.get_df(debug = True, reload = True, process = True, num_rows=num_rows)
-    # training data
+    # processed_df = kn1.get_df(debug = True, reload = True, process = True, num_rows=num_rows)
+    
+    
+    processed_df = pd.read_csv('processed_df.csv', nrows= num_rows)
     processed_df = processed_df[processed_df['TARGET'].notnull()]    
     
     # récupère le DF brut (utilisé pour l'affichage')
@@ -56,22 +55,18 @@ def init_script(first):
     with open("lightGBM_trained_model", "rb") as input_file:
         lightGBM_clf = pickle.load(input_file)    
 
-    # with open("shap_objects", "rb") as input_file:
-    #     shap_explainer = pickle.load(input_file)
-    #     shap_values = pickle.load(input_file)
+    with open("shap_objects", "rb") as input_file:
+        shap_explainer = pickle.load(input_file)
+        shap_values = pickle.load(input_file)
+     
         
-    shap_explainer = shap.TreeExplainer(lightGBM_clf)
-    shap_values = shap_explainer.shap_values(processed_df[feats])
+    # shap_explainer = shap.TreeExplainer(lightGBM_clf)
+    # shap_values = shap_explainer.shap_values(processed_df[feats])
         
     print('first init')
+    
     return processed_df, display_df, feats, lightGBM_clf, min_var, max_var, shap_explainer, shap_values
-
-# initialise les objets du script au premier démarrage, utilise le cache ensuite
-processed_df, display_df, feats, model_clf, min_var, max_var, shap_explainer, shap_values = init_script(first=True)
-
-# seuil du modèle pour 'TARGET'
-model_threshold = 0.16
-  
+ 
 
 #(allow_output_mutation=True)
 
@@ -81,7 +76,7 @@ def get_customer_from_df(sk_id_curr):
     Récupère les infos client du DF
 
     """
-    print('get_customer_from_df...')
+    print('get_customer_from_df...\n')
     try:
         sk_id_curr = int(sk_id_curr)
     except ValueError:
@@ -96,24 +91,10 @@ def get_customer_from_df(sk_id_curr):
     return processed_customer_df, raw_customer_df
 
 
-
 def display_graph(var_name, var_label, cust_value, df, graph_type):
     """
     Affiche un graphe, soit histogramme de distribution, soit boxplot
     
-    Parameters
-    ----------
-    var_name : TYPE
-        DESCRIPTION.
-    var_label : TYPE
-        DESCRIPTION.
-    cust_value : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    None.
-
     """
     # filtrage outliers
     outlier_thresh = 20 # seuil à X %
@@ -125,7 +106,7 @@ def display_graph(var_name, var_label, cust_value, df, graph_type):
     df_filtered = df[ (df[var_name] >= lower) &  (df[var_name] <= upper) ]
     
     # affichage graphe
-    fig, g = plt.subplots(1,1, figsize=(10,5)) # figsize : largeur x hauteur
+    fig_1, g = plt.subplots(1,1, figsize=(4,2)) # figsize : largeur x hauteur
     # HISTOGRAMME
     if graph_type == 'HISTO':
         g = sns.distplot(df_filtered[var_name].values, kde=False, color='k') # distplot DEPRECATED -> utiliser displot
@@ -144,7 +125,7 @@ def display_graph(var_name, var_label, cust_value, df, graph_type):
     g.axvline(cust_value, color='r', linestyle='-')
     g.legend({'Client':cust_value}) # 'Median':median,         
     
-    st.pyplot(fig)                
+    st.pyplot(fig_1)                
     return
 
 def st_shap(plot, height=None):
@@ -152,17 +133,19 @@ def st_shap(plot, height=None):
     components.html(shap_html, height=height)
 
 
-def display_customer_header(raw_customer_df):
+def display_customer_header(raw_customer_df, sk_id_curr):
     # affiche ID Client
-    client_idx = raw_customer_df.index[0]
+    # client_idx = raw_customer_df.index[0]
+    client_idx = processed_df[ processed_df.SK_ID_CURR == sk_id_curr].index
+
     print('client_idx', client_idx)
-    client_id_str = "Client ID : {}".format(str(raw_customer_df['SK_ID_CURR'].iloc[0]))
-    st.write(client_id_str)    
+    # client_id_str = "Client ID : {}".format(str(raw_customer_df['SK_ID_CURR'].iloc[0]))
+    st.write(str(sk_id_curr))
 
     # affiche l'interprétation SHAP    
     fig_1, ax_1 = plt.subplots(1,1, figsize=(10,5))    
-    st_shap( shap.force_plot( shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].iloc[0,:],
-                    link='logit', figsize=(12,3) ) ) #matplotlib=True                      
+    st_shap( shap.force_plot( shap_explainer.expected_value[1], shap_values[1][client_idx,:], processed_df[feats].loc[client_idx,:],
+                    link='logit', figsize=(12,3) ) ) #shap_values[1]                      
     return
     
 def display_var_section(raw_customer_df, var_group_name):
@@ -252,7 +235,7 @@ def display_predict_proba(processed_customer_df): #, user_var):
     print('Predict : ', pred)
     
     # affichage
-    pred_str = "Default risk : \n{:.0f}%".format(pred*100)
+    pred_str = "Default risk : \n{:.2f}%".format(pred*100)
     grant_str = 'Credit prediction :\n'
     
     if pred < model_threshold:
@@ -267,33 +250,53 @@ def display_predict_proba(processed_customer_df): #, user_var):
     return
 
 
+# @st.cache(allow_output_mutation=True)
+# def get_prev_sk_id(sk_curr):
+           
+#     return sk_curr
+
+
+
+# initialise les objets du script au premier démarrage, utilise le cache ensuite
+processed_df, display_df, feats, model_clf, min_var, max_var, shap_explainer, shap_values = init_script(first=True)
+
+# seuil du modèle pour 'TARGET'
+model_threshold = 0.1
 
 # BARRE LATERALE
 st.sidebar.image(image='dashboard-img.png')
-#st.sidebar.header("DASHBOARD\n'Prêt à Dépenser'")
 
+
+    
 # select box "identifiant client"
 sk_id_curr = st.sidebar.selectbox(label='Client ID', options=display_df['SK_ID_CURR'], index=0, key='client_id')
-if sk_id_curr is not None: # 
+
+
+if sk_id_curr is not None: # != prev_sk_id: 
     print('sk_id_curr : ', sk_id_curr)
     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-    display_customer_header(raw_customer_df)
-    display_var_section(raw_customer_df, var_group_name='PERSONAL') #user_var = 
+    # prev_sk_id = sk_id_curr
+    # display_customer_header(raw_customer_df)
+    # display_var_section(raw_customer_df, var_group_name='PERSONAL') #user_var = 
+
+# bouton 'RELOAD' / TOTEST
+# if st.sidebar.button(label='display', key='reload'):
+#     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
+
+display_customer_header(raw_customer_df, sk_id_curr)
+display_var_section(raw_customer_df, var_group_name='PERSONAL')
+
 
 # PREDICTION de PROBA CLIENT
-if st.sidebar.button('Predict') or (processed_customer_df is not None):
+if st.sidebar.button('Predict') or (processed_customer_df is not None): #
     display_predict_proba(processed_customer_df) #, user_var)
 
 # affiche importance features 
 fig_1, ax_1 = plt.subplots(1,1, figsize=(5,20))
 shap.summary_plot(shap_values, processed_df[feats])
 st.sidebar.pyplot(fig_1)
-
-
-# bouton 'RELOAD' / TOTEST
-# if st.sidebar.button(label='reload', key='reload'):
-#     processed_customer_df, raw_customer_df = get_customer_from_df(sk_id_curr)
-
+    
+    
 # CHECKBOXES : choix de la section à afficher ()
 for var_group_name, var_group_label in dsh.var_group.items():
     if var_group_name != 'PERSONAL':
@@ -307,12 +310,7 @@ for var_group_name, var_group_label in dsh.var_group.items():
             for var_name in user_var.keys(): #dsh.editable_var:
                 # try:
                 processed_customer_df[var_name] = user_var[var_name]
-                print(var_name, ' : ', user_var[var_name])
-                # except NameError: #  'user_var' pas encore défini
-                #     print('user_var pas encore défini')
-                #     continue
-        
-        #pass            
+                print(var_name, ' : ', user_var[var_name])    
 
 
 

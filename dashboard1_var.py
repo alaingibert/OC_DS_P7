@@ -35,7 +35,7 @@ top_variables = [
 # Variables qu'on peut éditer pour faire de nouvelles prédictions
 editable_var = [
     'AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY','AMT_GOODS_PRICE',
-    'DAYS_REGISTRATION', 'DAYS_ID_PUBLISH', 'DAYS_LAST_PHONE_CHANGE',
+    # 'DAYS_REGISTRATION', 'DAYS_ID_PUBLISH', 'DAYS_LAST_PHONE_CHANGE',
     'EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3'
     ]
 
